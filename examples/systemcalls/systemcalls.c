@@ -1,4 +1,8 @@
 #include "systemcalls.h"
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <sys/wait.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -11,12 +15,16 @@ bool do_system(const char *cmd)
 {
 
 /*
- * TODO  add your code here
  *  Call the system() function with the command set in the cmd
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
-
+    int ret_val = system(cmd);    
+    if (ret_val != 0)
+    {
+        perror("System call failed");
+        return false;
+    }    
     return true;
 }
 
@@ -36,6 +44,7 @@ bool do_system(const char *cmd)
 
 bool do_exec(int count, ...)
 {
+    bool was_success = true;
     va_list args;
     va_start(args, count);
     char * command[count+1];
@@ -47,10 +56,9 @@ bool do_exec(int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    // command[count] = command[count];
 
 /*
- * TODO:
  *   Execute a system command by calling fork, execv(),
  *   and wait instead of system (see LSP page 161).
  *   Use the command[0] as the full path to the command to execute
@@ -58,10 +66,53 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
-
+    int my_pid = fork();
+    if (my_pid == -1)
+    {
+        perror("do_exec: fork failed");
+        was_success = false;
+    }
+    if (my_pid == 0)
+    {
+        // I am the child
+        execv(command[0], &(command[1]));
+        // Should never get here
+        perror("do_exec: execv failed in child");    
+        va_end(args);
+        exit(1);                    
+    }
+    else
+    {
+        // I am the parent
+        int wstatus;
+        int ret_val = waitpid(my_pid, &wstatus, 0);
+        printf("waitpid returned pid %d wstatus %d\r\n", ret_val, wstatus);
+        if (ret_val == -1)
+        {
+            perror("do_exec: wait failed in parent");
+            was_success = false;
+        }        
+        else
+        {
+            if (WIFEXITED(wstatus))
+            {
+                printf("WIFEXITED true\r\n");
+                printf("WEXITSTATUS(wstatus) = %d\r\n", WEXITSTATUS(wstatus));                
+                if (WEXITSTATUS(wstatus))
+                {                    
+                    was_success = false;
+                }
+            }
+            else
+            {
+                printf("WIFEXITED(wstatus) = false\r\n");
+                was_success = false;
+            }
+        }
+    }
     va_end(args);
-
-    return true;
+    printf("%s returned %d\r\n", (my_pid ? "Parent" : "Child"), was_success);
+    return was_success;
 }
 
 /**
@@ -75,14 +126,16 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     va_start(args, count);
     char * command[count+1];
     int i;
+    bool was_success = true;
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
+        printf("command[%d]: %s\r\n", i, command[i]);
     }
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    // command[count] = command[count];
 
 
 /*
@@ -93,7 +146,60 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *
 */
 
+    int fd = open(outputfile, O_WRONLY | O_TRUNC | O_CREAT, 0664);
+    if (fd < 0)
+    {
+        perror("systemcalls: Could not open output file for redirection");
+        return false;
+    }
+
+    int my_pid = fork();
+    if (my_pid == 0)
+    {
+        // I am the child        
+        int ret_val = dup2(fd, 1);
+        if (ret_val != 1)
+        {
+            perror("systemcalls: Unable to duplicate file descriptor to stdout for fork");
+            return false;
+        }        
+        close(fd);        
+        execv(command[0], &(command[1]));        
+        // Should never get here
+        perror("systemcalls: execv failed in child:");
+        return false;                        
+    }
+    else
+    {
+        // I am the parent
+        int wstatus;
+        close(fd);
+        int ret_val = waitpid(my_pid, &wstatus, 0);
+        printf("waitpid returned pid %d wstatus %d\r\n", ret_val, wstatus);
+        if (ret_val == -1)
+        {
+            perror("do_exec: wait failed in parent");
+            was_success = false;
+        }        
+        else
+        {
+            if (WIFEXITED(wstatus))
+            {
+                printf("WIFEXITED true\r\n");
+                printf("WEXITSTATUS(wstatus) = %d\r\n", WEXITSTATUS(wstatus));                
+                if (WEXITSTATUS(wstatus))
+                {                    
+                    was_success = false;
+                }
+            }
+            else
+            {
+                printf("WIFEXITED(wstatus) = false\r\n");
+                was_success = false;
+            }
+        }        
+    }
     va_end(args);
 
-    return true;
+    return was_success;
 }
