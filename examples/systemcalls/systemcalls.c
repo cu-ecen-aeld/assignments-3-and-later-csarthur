@@ -22,7 +22,7 @@ bool do_system(const char *cmd)
     int ret_val = system(cmd);    
     if (ret_val != 0)
     {
-        perror("System call failed");
+        perror("do_system: System call failed");
         return false;
     }    
     return true;
@@ -47,6 +47,7 @@ bool do_exec(int count, ...)
     bool was_success = true;
     va_list args;
     va_start(args, count);
+    //char ** command = malloc(count * sizeof(char *));
     char * command[count+1];
     int i;
     for(i=0; i<count; i++)
@@ -75,10 +76,11 @@ bool do_exec(int count, ...)
     if (my_pid == 0)
     {
         // I am the child
-        execv(command[0], &(command[1]));
+        execv(command[0], command);
         // Should never get here
         perror("do_exec: execv failed in child");    
         va_end(args);
+        //free(command);        
         exit(1);                    
     }
     else
@@ -86,7 +88,6 @@ bool do_exec(int count, ...)
         // I am the parent
         int wstatus;
         int ret_val = waitpid(my_pid, &wstatus, 0);
-        printf("waitpid returned pid %d wstatus %d\r\n", ret_val, wstatus);
         if (ret_val == -1)
         {
             perror("do_exec: wait failed in parent");
@@ -96,8 +97,6 @@ bool do_exec(int count, ...)
         {
             if (WIFEXITED(wstatus))
             {
-                printf("WIFEXITED true\r\n");
-                printf("WEXITSTATUS(wstatus) = %d\r\n", WEXITSTATUS(wstatus));                
                 if (WEXITSTATUS(wstatus))
                 {                    
                     was_success = false;
@@ -105,13 +104,12 @@ bool do_exec(int count, ...)
             }
             else
             {
-                printf("WIFEXITED(wstatus) = false\r\n");
                 was_success = false;
             }
         }
     }
     va_end(args);
-    printf("%s returned %d\r\n", (my_pid ? "Parent" : "Child"), was_success);
+    //free(command);
     return was_success;
 }
 
@@ -130,13 +128,8 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
-        printf("command[%d]: %s\r\n", i, command[i]);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    // command[count] = command[count];
-
 
 /*
  * TODO
@@ -145,11 +138,10 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
-
     int fd = open(outputfile, O_WRONLY | O_TRUNC | O_CREAT, 0664);
     if (fd < 0)
     {
-        perror("systemcalls: Could not open output file for redirection");
+        perror("do_exec_redirect: Could not open output file for redirection");
         return false;
     }
 
@@ -160,13 +152,13 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
         int ret_val = dup2(fd, 1);
         if (ret_val != 1)
         {
-            perror("systemcalls: Unable to duplicate file descriptor to stdout for fork");
+            perror("do_exec_redirect: Unable to duplicate file descriptor to stdout for fork");
             return false;
         }        
         close(fd);        
-        execv(command[0], &(command[1]));        
+        execv(command[0], command);        
         // Should never get here
-        perror("systemcalls: execv failed in child:");
+        perror("do_exec_redirect: execv failed in child:");
         return false;                        
     }
     else
@@ -175,18 +167,15 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
         int wstatus;
         close(fd);
         int ret_val = waitpid(my_pid, &wstatus, 0);
-        printf("waitpid returned pid %d wstatus %d\r\n", ret_val, wstatus);
         if (ret_val == -1)
         {
-            perror("do_exec: wait failed in parent");
+            perror("do_exec_redirect: wait failed in parent");
             was_success = false;
         }        
         else
         {
             if (WIFEXITED(wstatus))
             {
-                printf("WIFEXITED true\r\n");
-                printf("WEXITSTATUS(wstatus) = %d\r\n", WEXITSTATUS(wstatus));                
                 if (WEXITSTATUS(wstatus))
                 {                    
                     was_success = false;
@@ -194,7 +183,6 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
             }
             else
             {
-                printf("WIFEXITED(wstatus) = false\r\n");
                 was_success = false;
             }
         }        
