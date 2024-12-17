@@ -33,8 +33,8 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     cd linux-stable
     echo "Checking out version ${KERNEL_VERSION}"
     git checkout ${KERNEL_VERSION}
-    git restore .
-    git apply -v ~/cu-ecen-aeld/finder-app/dtc-lexer.l.patch
+    git restore .    
+    #git apply -v ~/cu-ecen-aeld/finder-app/dtc-lexer.l.patch
 
     # TODO: Add your kernel build steps here
     make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- mrproper
