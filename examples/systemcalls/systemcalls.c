@@ -47,7 +47,6 @@ bool do_exec(int count, ...)
     bool was_success = true;
     va_list args;
     va_start(args, count);
-    //char ** command = malloc(count * sizeof(char *));
     char * command[count+1];
     int i;
     for(i=0; i<count; i++)
@@ -80,7 +79,6 @@ bool do_exec(int count, ...)
         // Should never get here
         perror("do_exec: execv failed in child");    
         va_end(args);
-        //free(command);        
         exit(1);                    
     }
     else
@@ -109,7 +107,6 @@ bool do_exec(int count, ...)
         }
     }
     va_end(args);
-    //free(command);
     return was_success;
 }
 
