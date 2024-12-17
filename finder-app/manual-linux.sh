@@ -12,6 +12,7 @@ BUSYBOX_VERSION=1_33_1
 FINDER_APP_DIR=$(realpath $(dirname $0))
 ARCH=arm64
 CROSS_COMPILE=aarch64-none-linux-gnu-
+PROJECT_DIR=${PWD}
 
 if [ $# -lt 1 ]
 then
@@ -91,10 +92,10 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # use readelf on busybox binary to determine program interpreter and shared library dependencies;
 # Copy from cross-compile toolchain and place in /lib64
-cp ~/arm-cross-compiler/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/lib/ld-linux-aarch64.so.1 $OUTDIR/rootfs/lib
-cp ~/arm-cross-compiler/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/lib64/libc.so.6 $OUTDIR/rootfs/lib64
-cp ~/arm-cross-compiler/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/lib64/libm.so.6 $OUTDIR/rootfs/lib64
-cp ~/arm-cross-compiler/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/lib64/libresolv.so.2 $OUTDIR/rootfs/lib64
+cp $(dirname $(which 'aarch64-none-linux-gnu-gcc'))/../aarch64-none-linux-gnu/libc/lib/ld-linux-aarch64.so.1 $OUTDIR/rootfs/lib
+cp $(dirname $(which 'aarch64-none-linux-gnu-gcc'))/../aarch64-none-linux-gnu/libc/lib64/libc.so.6 $OUTDIR/rootfs/lib64
+cp $(dirname $(which 'aarch64-none-linux-gnu-gcc'))/../aarch64-none-linux-gnu/libc/lib64/libm.so.6 $OUTDIR/rootfs/lib64
+cp $(dirname $(which 'aarch64-none-linux-gnu-gcc'))/../aarch64-none-linux-gnu/libc/lib64/libresolv.so.2 $OUTDIR/rootfs/lib64
 
 # TODO: Make device nodes
 cd "$OUTDIR/rootfs"
@@ -102,7 +103,7 @@ sudo mknod -m 666 dev/null c 1 3
 sudo mknod -m 666 dev/console c 5 1
 
 # TODO: Clean and build the writer utility
-cd ~/cu-ecen-aeld/finder-app
+cd $PROJECT_DIR
 make clean
 make CROSS_COMPILE=$CROSS_COMPILE
 cp writer "$OUTDIR/rootfs/home/writer"
