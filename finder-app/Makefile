@@ -1,7 +1,9 @@
 CC := gcc
 TARGET_WRITER := writer
 OBJS := $(TARGET_WRITER).o
-.PHONY: default
+.PHONY: default all
+
+all: default
 
 default: $(TARGET_WRITER)
 
