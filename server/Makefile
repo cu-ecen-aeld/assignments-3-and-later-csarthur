@@ -1,0 +1,17 @@
+CC := gcc
+TARGET_AESDSOCKET := aesdsocket
+OBJS := $(TARGET_AESDSOCKET).o
+.PHONY: default all
+
+all: default
+
+default: $(TARGET_AESDSOCKET)
+
+$(TARGET_AESDSOCKET): $(OBJS)
+	$(CROSS_COMPILE)$(CC) *.o -o $(TARGET_AESDSOCKET)
+
+$(TARGET_AESDSOCKET).o: $(TARGET_AESDSOCKET).c
+	$(CROSS_COMPILE)$(CC) -c $(TARGET_AESDSOCKET).c
+
+clean:
+	rm -f $(TARGET_AESDSOCKET) *.o
