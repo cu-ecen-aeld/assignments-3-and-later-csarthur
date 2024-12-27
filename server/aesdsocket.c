@@ -13,6 +13,8 @@
 #include <stdbool.h>
 
 #define IP_ADDRESS_LENGTH 40
+#define MAX_PACKET_SIZE 1500
+#define OUTPUT_FILENAME "/var/tmp/aesdsocketdata"
 
 void usage(char * prog_name);
 static void signal_handler(int signal_number);
@@ -93,7 +95,6 @@ int main(int argc, char ** argv)
     }
     openlog(NULL, 0, facility);
 
-
     struct addrinfo hints;
     struct addrinfo * res;
     memset(&hints, 0, sizeof(hints));
@@ -103,17 +104,21 @@ int main(int argc, char ** argv)
     hints.ai_flags = AI_PASSIVE;
 
     retval = getaddrinfo(NULL, "9000", &hints, &res);
-    if (res == NULL | retval != 0)
+    if (res == NULL || retval != 0)
     {
         perror("aesdsocket: Call to getaddrinfo failed");
-        exit(-1);
+        retval = -1;
+        goto cleanup;        
     }
-
+    
+    int output_file_desc;
+    int acceptedFd;
     int s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (s < 0)
     {
         perror("aesdsocket: Could not get socket");
-        exit(-1);        
+        retval = -1;
+        goto cleanup;        
     }
     
     int option_value = 1;
@@ -122,7 +127,8 @@ int main(int argc, char ** argv)
     if (retval)
     {
         perror("aesdsocket: Could not set socket options");
-        exit(-1);
+        retval = -1;
+        goto cleanup;        
     }
     
 
@@ -130,16 +136,29 @@ int main(int argc, char ** argv)
     if (retval)
     {
         perror("aesdsocket: Bind failed");
-        exit(-1);        
+        retval = -1;
+        goto cleanup;        
     }
 
     freeaddrinfo(res);
-    char * buf = malloc(1500 * sizeof(char));
-    if (!buf)
+
+    char * packet_buf = malloc(MAX_PACKET_SIZE * sizeof(char));
+    if (!packet_buf)
     {
         perror("aesdsocket: Couldn't malloc buffer for incoming data");
-        exit(-1);
+        retval = -1;
+        goto cleanup;        
     }    
+
+#if 0    
+    char * output_buf = malloc(MAX_PACKET_SIZE * sizeof(char));
+    if (!output_buf)
+    {
+        perror("aesdsocket: Couldn't malloc second buffer for data");
+        retval = -1;
+        goto cleanup;        
+    }        
+#endif
 
     do
     {    
@@ -147,17 +166,18 @@ int main(int argc, char ** argv)
         if (retval)
         {
             perror("aesdsocket: Listen failed");
-            exit(-1);        
+            retval = -1;
+            goto cleanup;        
         }    
 
-    //    struct sockaddr_storage connecting_addr;
         struct sockaddr connecting_addr;
         socklen_t addr_size = sizeof(connecting_addr);
-        int acceptedFd = accept(s, &connecting_addr, &addr_size);
+        acceptedFd = accept(s, &connecting_addr, &addr_size);
         if (acceptedFd == -1)
         {
             perror("aesdsocket: Couldn't accept incoming connection");
-            exit(-1);
+            retval = -1;
+            goto cleanup;        
         }    
         struct sockaddr_in * connecting_addr_in = (struct sockaddr_in *)&connecting_addr;
         char connecting_ip_address[IP_ADDRESS_LENGTH];
@@ -167,27 +187,27 @@ int main(int argc, char ** argv)
                     (socklen_t)IP_ADDRESS_LENGTH) == NULL)
         {
             perror("aesdsocket: Could not get IP address string of connected client");
-            exit(-1);
+            retval = -1;
+            goto cleanup;        
         };
         syslog(LOG_INFO, "Accepted connection from %s", connecting_ip_address);
-
-    //TODO: fork or create thread at this point
 
         if (acceptedFd == -1)
         {
             perror("aesdsocket: Accept failed");
-            exit(-1);        
+            retval = -1;
+            goto cleanup;        
         }
         
-        char * bufptr = buf;
-        int len = 1;
         int num_bytes_received = 0;
         int total_bytes_received = 0;
+        int number_of_reallocs = 0;
         do
-        {
-            num_bytes_received = recv(acceptedFd, bufptr, len, MSG_DONTWAIT);
+        {            
+            num_bytes_received = recv(acceptedFd, packet_buf + total_bytes_received, MAX_PACKET_SIZE, MSG_DONTWAIT);
             if (num_bytes_received == 0) //socket has been closed; break
             {
+                syslog(LOG_INFO, "Closed connection from %s", connecting_ip_address);
                 break;
             }
             else if (num_bytes_received < 0) //non-blocking call failed; continue
@@ -195,24 +215,92 @@ int main(int argc, char ** argv)
                 continue;
             }
             else
-            {   
-                bufptr += num_bytes_received;
+            {                   
                 total_bytes_received += num_bytes_received;                
-                if (*(bufptr - 1) == '\0')
+                printf("Received %d bytes\r\n", total_bytes_received);
+                if (*(packet_buf + total_bytes_received - 1) == '\n')
                 {
-                    printf("Received string %s, logging;\r\n", bufptr);
+                    printf("Received string %s, logging;\r\n", packet_buf);
+                    output_file_desc = open(OUTPUT_FILENAME,
+                                            O_CREAT | O_RDWR | O_APPEND,
+                                            S_IRGRP | S_IRUSR | S_IROTH | S_IWGRP | S_IWUSR | S_IWOTH);
+                    if (output_file_desc < 0)
+                    {
+                        perror("aesdsocket: Could not create output file");
+                        retval = -1;
+                        goto cleanup;
+                    }
+                    printf("Writing...\r\n");
+                    write(output_file_desc, packet_buf, total_bytes_received);
+                    printf("Free packet_buf...\r\n");
+                    free(packet_buf);                                
+                    number_of_reallocs = 0;
+                    total_bytes_received = 0;
+                    printf("Allocate packet_buf again...\r\n");
+                    packet_buf = malloc(MAX_PACKET_SIZE * sizeof(char));
+                    printf("Checking new ptr...\r\n");
+                    if (!packet_buf)
+                    {
+                        perror("aesdsocket: Could not re-create packet buffer after free");
+                        retval = -1;
+                        goto cleanup;
+                    }
+                    printf("Got a new valid ptr...\r\n");
                 }
-                bufptr = buf;
+                else
+                {
+                    // Admittedly, this could be a wasteful, but assume a packet without a 
+                    // '\n' is the maximum size and there is at least one more packet coming
+                    // Realloc 3000 the first time and 3000
+                    char * new_ptr = realloc(packet_buf, 2 * MAX_PACKET_SIZE + (number_of_reallocs * MAX_PACKET_SIZE));
+                    if (!new_ptr)
+                    {
+                        printf("Attemping to reallocate %d bytes\r\n", total_bytes_received + MAX_PACKET_SIZE);
+                        perror("aesdsocket: Couldn't allocate additional memory for incoming data; dropping buffer");
+                        total_bytes_received = 0;                        
+                    }
+                    else
+                    {
+                        packet_buf = new_ptr;                        
+                        printf("Reallocated %d bytes\r\n", 2 * MAX_PACKET_SIZE + (number_of_reallocs * MAX_PACKET_SIZE));
+                        number_of_reallocs++;
+                    }
+                }
             }
-        } while (!caught_signal);
-        
-        syslog(LOG_INFO, "Closed connection from %s", connecting_ip_address);        
-        printf("I got %s over my socket; total bytes = %d.\r\n",buf, total_bytes_received);    
-
+        } while (!caught_signal);                    
     } while (!caught_signal);
 
 cleanup:
-    free(buf);
+    free(packet_buf);
+    shutdown(acceptedFd, SHUT_RDWR);
+    if (acceptedFd >= 0)
+    {
+        if (close(acceptedFd))
+        {
+            perror("aesdsocket: Could not close file descriptor for connection");
+        }
+    }
+    if (s >= 0)
+    {
+        if (close(s))
+        {
+            perror("aesdsocket: Could not close file descriptor for socket");
+        }
+    }
+    if (output_file_desc >= 0)
+    {
+        if (close(output_file_desc))
+        {
+            perror("aesdsocket: Could not close file descriptor for output file");
+        }
+    }
+    if (!access(OUTPUT_FILENAME, F_OK)) // if file exists
+    {
+        if (remove(OUTPUT_FILENAME))
+        {
+            perror("aesdsocket: Could not remove output file");
+        }
+    }    
 	return retval;
 }
 
