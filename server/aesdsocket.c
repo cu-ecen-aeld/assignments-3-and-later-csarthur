@@ -215,10 +215,8 @@ int main(int argc, char ** argv)
             else
             {                   
                 total_bytes_received += num_bytes_received;                
-                printf("Received %d bytes\r\n", total_bytes_received);
                 if (*(packet_buf + total_bytes_received - 1) == '\n')
                 {
-                    printf("Received string %s, logging;\r\n", packet_buf);
                     output_file_desc = open(OUTPUT_FILENAME,
                                             O_CREAT | O_RDWR | O_APPEND,
                                             S_IRGRP | S_IRUSR | S_IROTH | S_IWGRP | S_IWUSR | S_IWOTH);
@@ -276,14 +274,12 @@ int main(int argc, char ** argv)
                     char * new_ptr = realloc(packet_buf, 2 * MAX_PACKET_SIZE + (number_of_reallocs * MAX_PACKET_SIZE));
                     if (!new_ptr)
                     {
-                        printf("Attemping to reallocate %d bytes\r\n", total_bytes_received + MAX_PACKET_SIZE);
                         perror("aesdsocket: Couldn't allocate additional memory for incoming data; dropping buffer");
                         total_bytes_received = 0;                        
                     }
                     else
                     {
                         packet_buf = new_ptr;                        
-                        printf("Reallocated %d bytes\r\n", 2 * MAX_PACKET_SIZE + (number_of_reallocs * MAX_PACKET_SIZE));
                         number_of_reallocs++;
                     }
                 }
