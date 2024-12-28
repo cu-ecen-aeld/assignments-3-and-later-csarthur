@@ -55,44 +55,7 @@ int main(int argc, char ** argv)
         exit(0);
     }
 
-    if (run_as_daemon)
-    {
-        int pid = fork();
-        if (pid == 0)
-        {
-             // I am the child
-            setsid();
-            chdir("/");
-            int fd = open("/dev/null", O_RDWR);
-            if (fd == -1)
-            {
-                perror("aesdsocket: could not open /dev/null for I/O redirection");
-                exit(-1);
-            }
-            if (dup2(fd, STDIN_FILENO) == -1)
-            {
-                perror("aesdsocket: Could not redirect STDOUT to /dev/null");
-            }
-            if (dup2(fd, STDOUT_FILENO) == -1)
-            {
-                perror("aesdsocket: Could not redirect STDOUT to /dev/null");
-            }
-            if (dup2(fd, STDERR_FILENO) == -1)
-            {
-                perror("aesdsocket: Could not redirect STDERR to /dev/null");
-            }
-        }
-        else
-        {
-            exit(0);
-        }        
-    }    
-
     int facility = LOG_USER;
-    if (run_as_daemon)
-    {
-        facility = LOG_DAEMON;
-    }
     openlog(NULL, 0, facility);
 
     struct addrinfo hints;
@@ -141,6 +104,40 @@ int main(int argc, char ** argv)
     }
 
     freeaddrinfo(res);
+    if (run_as_daemon)
+    {
+        int pid = fork();
+        if (pid == 0)
+        {
+             // I am the child
+            setsid();
+            chdir("/");
+            int fd = open("/dev/null", O_RDWR);
+            if (fd == -1)
+            {
+                perror("aesdsocket: could not open /dev/null for I/O redirection");
+                exit(-1);
+            }
+            if (dup2(fd, STDIN_FILENO) == -1)
+            {
+                perror("aesdsocket: Could not redirect STDOUT to /dev/null");
+            }
+            if (dup2(fd, STDOUT_FILENO) == -1)
+            {
+                perror("aesdsocket: Could not redirect STDOUT to /dev/null");
+            }
+            if (dup2(fd, STDERR_FILENO) == -1)
+            {
+                perror("aesdsocket: Could not redirect STDERR to /dev/null");
+            }
+        }
+        else
+        {
+            exit(0);
+        }        
+    }        
+    
+    facility = LOG_DAEMON;
 
     char * packet_buf = malloc(MAX_PACKET_SIZE * sizeof(char));
     if (!packet_buf)
