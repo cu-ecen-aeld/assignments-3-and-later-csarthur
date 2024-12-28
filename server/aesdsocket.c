@@ -150,15 +150,13 @@ int main(int argc, char ** argv)
         goto cleanup;        
     }    
 
-#if 0    
-    char * output_buf = malloc(MAX_PACKET_SIZE * sizeof(char));
-    if (!output_buf)
+    char * read_buffer = malloc(MAX_PACKET_SIZE * sizeof(char));
+    if (!read_buffer)
     {
-        perror("aesdsocket: Couldn't malloc second buffer for data");
+        perror("aesdsocket: Could not allocate file read buffer");
         retval = -1;
-        goto cleanup;        
-    }        
-#endif
+        goto cleanup;
+    }    
 
     do
     {    
@@ -230,28 +228,51 @@ int main(int argc, char ** argv)
                         retval = -1;
                         goto cleanup;
                     }
-                    printf("Writing...\r\n");
-                    write(output_file_desc, packet_buf, total_bytes_received);
-                    printf("Free packet_buf...\r\n");
-                    free(packet_buf);                                
+                    
+                    write(output_file_desc, packet_buf, total_bytes_received);                             
                     number_of_reallocs = 0;
                     total_bytes_received = 0;
-                    printf("Allocate packet_buf again...\r\n");
+
+                    // Return contents of output file
+                    lseek(output_file_desc, 0, SEEK_SET);
+                    size_t num_bytes_read;
+                    do
+                    {
+                        num_bytes_read = read(output_file_desc, read_buffer, MAX_PACKET_SIZE);
+                        if (send(acceptedFd, read_buffer, num_bytes_read, 0) == -1)
+                        {
+                            perror("aesdsocket: send failed");
+                            free(read_buffer);
+                            retval = -1;
+                            goto cleanup;
+                        }
+                    } while (num_bytes_read > 0);
+                    
+                    free(read_buffer);
+                    read_buffer = malloc(MAX_PACKET_SIZE * sizeof(char));
+                    if (!read_buffer)
+                    {
+                        perror("aesdsocket: Could not re-create file read buffer after free");
+                        retval = -1;
+                        goto cleanup;
+                    }
+
+                    free(packet_buf);   
                     packet_buf = malloc(MAX_PACKET_SIZE * sizeof(char));
-                    printf("Checking new ptr...\r\n");
+
                     if (!packet_buf)
                     {
                         perror("aesdsocket: Could not re-create packet buffer after free");
                         retval = -1;
                         goto cleanup;
                     }
-                    printf("Got a new valid ptr...\r\n");
+
                 }
                 else
                 {
-                    // Admittedly, this could be a wasteful, but assume a packet without a 
+                    // Admittedly, this could be wasteful, but assume a packet without a 
                     // '\n' is the maximum size and there is at least one more packet coming
-                    // Realloc 3000 the first time and 3000
+                    // Realloc 3000b the first time and another 1500b each additional realloc
                     char * new_ptr = realloc(packet_buf, 2 * MAX_PACKET_SIZE + (number_of_reallocs * MAX_PACKET_SIZE));
                     if (!new_ptr)
                     {
@@ -272,6 +293,7 @@ int main(int argc, char ** argv)
 
 cleanup:
     free(packet_buf);
+    free(read_buffer);
     shutdown(acceptedFd, SHUT_RDWR);
     if (acceptedFd >= 0)
     {
@@ -317,7 +339,7 @@ static void signal_handler(int signal_number)
         case SIGINT:
         case SIGTERM:
             caught_signal = true;
-            syslog(LOG_INFO, "Caught signal, exiting");
+            syslog(LOG_INFO, "Caught signal %s, exiting", strsignal(signal_number));
             break;        
     }
 }
