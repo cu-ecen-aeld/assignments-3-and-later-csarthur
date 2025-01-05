@@ -147,7 +147,11 @@ int main(int argc, char ** argv)
         {
              // I am the child
             setsid();
-            chdir("/");
+            int chdir_retval = chdir("/");
+            if (chdir_retval)
+            {
+                perror("aesdsocket: Could not change directory to root on fork()");
+            }
             int fd = open("/dev/null", O_RDWR);
             if (fd == -1)
             {
