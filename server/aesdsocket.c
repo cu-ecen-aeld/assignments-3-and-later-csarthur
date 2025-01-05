@@ -42,35 +42,23 @@ void cleanup_threads(struct node_t ** head);
 static void timer_thread ( union sigval sigval );
 static bool setup_timer( timer_t timerid, unsigned int timer_period_ms,
                          struct timespec *start_time);
+bool start_timer(pthread_mutex_t * mutex);
 
 //Globals
 bool caught_signal = false;
 
 int main(int argc, char ** argv)
 {
-    struct sigevent sev;
-    timer_t timerid;    
-    
-    memset(&sev,0,sizeof(struct sigevent));
-    /**
-    * Setup a call to timer_thread passing in the td structure as the sigev_value
-    * argument
-    */
-    sev.sigev_notify = SIGEV_THREAD;
-    sev.sigev_value.sival_ptr = NULL;
-    sev.sigev_notify_function = timer_thread;
-    struct timespec start_time;
-    if ( timer_create(CLOCK_MONOTONIC,&sev,&timerid) != 0 )
-    {
-        printf("Error %d (%s) creating timer!\n",errno,strerror(errno));
-    }
-    else
-    {
-        setup_timer(timerid, 10 * 1000, &start_time);
-    }   
     int retval = 0;
-    int run_as_daemon = 0;    
     pthread_mutex_t mutex;
+    retval = pthread_mutex_init(&mutex, NULL);
+    if (retval)
+    {
+        perror("aesdsocket: Failed to initialize mutex");
+        exit(-1);
+    }        
+        
+    int run_as_daemon = 0;    
     pthread_attr_t thread_attr;
     struct node_t * head = NULL;
     struct sigaction aesdsocket_sigaction;
@@ -84,12 +72,7 @@ int main(int argc, char ** argv)
     {
         perror("aesdsocket: Could not register SIGINT handler");
     }    
-    retval = pthread_mutex_init(&mutex, NULL);
-    if (retval)
-    {
-        perror("aesdsocket: Failed to initialize mutex");
-        exit(-1);
-    }
+
     if (argc == 2)    
     {
         if (strcmp(argv[1],"-d") == 0)
@@ -182,13 +165,18 @@ int main(int argc, char ** argv)
             if (dup2(fd, STDERR_FILENO) == -1)
             {
                 perror("aesdsocket: Could not redirect STDERR to /dev/null");
-            }
+            }            
         }
         else
         {
             exit(0);
         }        
     }        
+    
+    if (!start_timer(&mutex))
+    {
+        printf("aesdsocket: Could not start timer\r\n");
+    }
 
     do
     {    
@@ -239,7 +227,9 @@ int main(int argc, char ** argv)
         pthread_attr_init(&thread_attr);
         pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_JOINABLE);
         int rc = pthread_create(&(the_connection_data->thread_id), &thread_attr, socket_thread, the_connection_data);
+#if 0        
         printf("Created new thread %lu\r\n",the_connection_data->thread_id);
+#endif        
         if (rc)
         {
             perror("aesdsocket: Could not create thread:");
@@ -508,8 +498,34 @@ void cleanup_threads(struct node_t ** head)
 
 static void timer_thread ( union sigval sigval )
 {
-//    struct thread_data *td = (struct thread_data*) sigval.sival_ptr;
-    printf("************ 10 second timer fired ************\r\n");
+    printf("******Timer fired******\r\n");
+    pthread_mutex_t * mutex = (pthread_mutex_t *) sigval.sival_ptr;
+    int output_file_desc = open(OUTPUT_FILENAME,
+                            O_CREAT | O_RDWR | O_APPEND,
+                            S_IRGRP | S_IRUSR | S_IROTH | S_IWGRP | S_IWUSR | S_IWOTH);
+    if (output_file_desc < 0)
+    {
+        perror("aesdsocket: Could not create output file for timestamp");
+    }
+    else
+    {
+        time_t time_t_time;
+        time(&time_t_time);
+        struct tm tm_time;
+        localtime_r(&time_t_time, &tm_time);
+        char buf[256];
+        memset(buf, 0, sizeof(buf));
+        strftime(buf, sizeof(buf), "timestamp:%a, %d %b %Y %T %z\r\n", &tm_time);
+        pthread_mutex_lock(mutex);
+        int write_rc = write(output_file_desc, buf, sizeof(buf));
+        pthread_mutex_unlock(mutex);
+        if (write_rc == -1)
+        {
+            perror("aesdsocket: Could not write timestamp to file");
+        }
+        close(output_file_desc);          
+    }
+
 }
 
 static inline void timespec_add( struct timespec *result,
@@ -549,4 +565,28 @@ static bool setup_timer( timer_t timerid, unsigned int timer_period_ms,
         }
     }
     return success;
+}
+
+bool start_timer(pthread_mutex_t * mutex)
+{
+    struct sigevent sev;
+    timer_t timerid;        
+    memset(&sev,0,sizeof(struct sigevent));
+    /**
+    * Setup a call to timer_thread passing in the td structure as the sigev_value
+    * argument
+    */
+    sev.sigev_notify = SIGEV_THREAD;
+    sev.sigev_value.sival_ptr = mutex;
+    sev.sigev_notify_function = timer_thread;
+    struct timespec start_time;
+    if ( timer_create(CLOCK_MONOTONIC,&sev,&timerid) != 0 )
+    {
+        printf("Error %d (%s) creating timer!\n",errno,strerror(errno));
+        return false;
+    }
+    else
+    {
+        return setup_timer(timerid, 10 * 1000, &start_time);
+    }   
 }
