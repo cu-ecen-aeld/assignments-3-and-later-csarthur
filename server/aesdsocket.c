@@ -58,7 +58,8 @@ int main(int argc, char ** argv)
         exit(-1);
     }        
         
-    int run_as_daemon = 0;    
+    int run_as_daemon = 0;   
+    bool timer_started = false; 
     pthread_attr_t thread_attr;
     struct node_t * head = NULL;
     struct sigaction aesdsocket_sigaction;
@@ -177,11 +178,6 @@ int main(int argc, char ** argv)
         }        
     }        
     
-    if (!start_timer(&mutex))
-    {
-        printf("aesdsocket: Could not start timer\r\n");
-    }
-
     do
     {    
         retval = listen(s, 1);
@@ -201,6 +197,17 @@ int main(int argc, char ** argv)
             retval = -1;
             goto cleanup;        
         }    
+        if (!timer_started)
+        {
+            if (!start_timer(&mutex))
+            {
+                perror("aesdsocket: Could not start timer\r\n");
+            }
+            else
+            {
+                timer_started = true;
+            }
+        }
         struct sockaddr_in * connecting_addr_in = (struct sockaddr_in *)&connecting_addr;
         char connecting_ip_address[IP_ADDRESS_LENGTH];
         if (inet_ntop(connecting_addr_in->sin_family,
@@ -501,8 +508,7 @@ void cleanup_threads(struct node_t ** head)
 }
 
 static void timer_thread ( union sigval sigval )
-{
-    printf("******Timer fired******\r\n");
+{    
     pthread_mutex_t * mutex = (pthread_mutex_t *) sigval.sival_ptr;
     int output_file_desc = open(OUTPUT_FILENAME,
                             O_CREAT | O_RDWR | O_APPEND,
