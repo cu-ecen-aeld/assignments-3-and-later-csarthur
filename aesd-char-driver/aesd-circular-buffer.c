@@ -70,7 +70,6 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 */
 void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
-    //printf("*** Add entry at in_offs %d, out_offs %d, full %d\r\n", buffer->in_offs, buffer->out_offs, buffer->full);
     struct aesd_buffer_entry aesd_buffer_entry_copy = *add_entry;   
     buffer->entry[buffer->in_offs] = aesd_buffer_entry_copy;
 
