@@ -152,6 +152,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     if (retval)
     {
         printk(KERN_WARNING "Could not copy all user data passed to write(): %lu bytes not written\n", retval);
+        count -= retval;
     }
     strncat(new_entry_string, local_buf, count);
     kfree(local_buf);
@@ -181,7 +182,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     else
     {
         mutex_unlock(&(((struct aesd_dev *)(filp->private_data))->lock));
-        return 0;
+        return count;
     }
 }
 struct file_operations aesd_fops = {
