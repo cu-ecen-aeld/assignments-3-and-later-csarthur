@@ -17,7 +17,12 @@
 
 #define IP_ADDRESS_LENGTH 40
 #define MAX_PACKET_SIZE 1500
-#define OUTPUT_FILENAME "/var/tmp/aesdsocketdata"
+
+#ifdef USE_AESD_CHAR_DEVICE
+    #define OUTPUT_FILENAME "/dev/aesdchar"
+#else
+    #define OUTPUT_FILENAME "/var/tmp/aesdsocketdata"
+#endif //#ifdef USE_AESD_CHAR_DEVICE
 
 struct connection_data_t
 {
@@ -196,7 +201,8 @@ int main(int argc, char ** argv)
             perror("aesdsocket: Couldn't accept incoming connection");
             retval = -1;
             goto cleanup;        
-        }    
+        }
+#ifndef USE_AESD_CHAR_DEVICE            
         if (!timer_started)
         {
             if (!start_timer(&mutex))
@@ -208,6 +214,7 @@ int main(int argc, char ** argv)
                 timer_started = true;
             }
         }
+#endif        
         struct sockaddr_in * connecting_addr_in = (struct sockaddr_in *)&connecting_addr;
         char connecting_ip_address[IP_ADDRESS_LENGTH];
         if (inet_ntop(connecting_addr_in->sin_family,
@@ -237,10 +244,7 @@ int main(int argc, char ** argv)
         the_connection_data->thread_done = 0;
         pthread_attr_init(&thread_attr);
         pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_JOINABLE);
-        int rc = pthread_create(&(the_connection_data->thread_id), &thread_attr, socket_thread, the_connection_data);
-#if 0        
-        printf("Created new thread %lu\r\n",the_connection_data->thread_id);
-#endif        
+        int rc = pthread_create(&(the_connection_data->thread_id), &thread_attr, socket_thread, the_connection_data);      
         if (rc)
         {
             perror("aesdsocket: Could not create thread:");
@@ -272,24 +276,6 @@ int main(int argc, char ** argv)
     } while (!caught_signal);
 
 cleanup:
-
-#if 0
-    shutdown(acceptedFd, SHUT_RDWR);
-    if (acceptedFd >= 0)
-    {
-        if (close(acceptedFd))
-        {
-            perror("aesdsocket: Could not close file descriptor for connection");
-        }
-    }
-    if (output_file_desc >= 0)
-    {
-        if (close(output_file_desc))
-        {
-            perror("aesdsocket: Could not close file descriptor for output file");
-        }
-    }    
-#endif    
     if (s >= 0)
     {
         if (close(s))
@@ -297,7 +283,7 @@ cleanup:
             perror("aesdsocket: Could not close file descriptor for socket");
         }
     }
-
+#ifndef USE_AESD_CHAR_DEVICE
     if (!access(OUTPUT_FILENAME, F_OK)) // if file exists
     {
         if (remove(OUTPUT_FILENAME))
@@ -305,6 +291,7 @@ cleanup:
             perror("aesdsocket: Could not remove output file");
         }
     }    
+#endif    
     cleanup_threads(&head);
 	return retval;
 }
@@ -462,21 +449,12 @@ void cleanup_threads(struct node_t ** head)
 
         do
         {
-            head_joined = 0;
-#if 0
-            if (this_node)
-            {
-                printf("Checking node %lu, done: %d\r\n", this_node->thread_data->thread_id, this_node->thread_data->thread_done);
-            }
-#endif            
+            head_joined = 0;     
             if (this_node && this_node->thread_data->thread_done)
             {
                 *head = this_node->next; // OK if NULL
                 head_joined = 1;
-                void ** thread_return_value = NULL;
-#if 0                
-                printf("Joining node %lu\r\n", this_node->thread_data->thread_id);
-#endif                
+                void ** thread_return_value = NULL;             
                 pthread_join(this_node->thread_data->thread_id, thread_return_value);     
                 free(this_node->thread_data);
                 free(this_node);
@@ -487,17 +465,11 @@ void cleanup_threads(struct node_t ** head)
         // Start looking ahead one node at a time starting with the head
         while(this_node && this_node->next != NULL)
         {
-#if 0
-            printf("Checking node %lu, done: %d\r\n", this_node->next->thread_data->thread_id, this_node->next->thread_data->thread_done);
-#endif            
             if (this_node->next->thread_data->thread_done)
             {                        
                 struct node_t * node_to_free = this_node->next;
                 this_node->next = this_node->next->next;                                                
                 void ** thread_return_value = NULL;
-#if 0                
-                printf("Joining node %lu\r\n", node_to_free->thread_data->thread_id);
-#endif                
                 pthread_join(node_to_free->thread_data->thread_id, thread_return_value);
                 free(node_to_free->thread_data);                        
                 free(node_to_free);
