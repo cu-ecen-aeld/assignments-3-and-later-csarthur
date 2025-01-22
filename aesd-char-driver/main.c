@@ -103,14 +103,19 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     struct aesd_circular_buffer * circ_buffer = ((struct aesd_dev *)(filp->private_data))->circ_buffer;
     struct aesd_buffer_entry * new_entry = ((struct aesd_dev *)(filp->private_data))->working_entry;  
     char * new_entry_string;
+    const char * contents_of_previous_write;
     char * temp_new_ptr;
     char * local_buf;
     char has_newline = 0; 
     int i = 0;
 
-    PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
+    PDEBUG("write %zu bytes with offset %lld",count,*f_pos);    
     
-    mutex_lock_interruptible(&(((struct aesd_dev *)(filp->private_data))->lock));
+    if (mutex_lock_interruptible(&(((struct aesd_dev *)(filp->private_data))->lock)))
+    {
+        printk(KERN_WARNING "Interrupted waiting on mutex lock");
+        return -EINTR;
+    }
     
     local_buf = (char *)kzalloc(count * sizeof(char), GFP_KERNEL);
 
@@ -126,32 +131,30 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     }
     else 
     {
+        contents_of_previous_write = new_entry->buffptr;
         // Handle the case where we got an incomplete entry (lacking newline) on a previous call    
         temp_new_ptr = (char *)(kzalloc(new_entry->size + (count * sizeof(char)), GFP_KERNEL));
         if (temp_new_ptr)
         {
-            memcpy(new_entry_string, temp_new_ptr, new_entry->size + count);
-            kfree(new_entry_string);
+            memcpy(temp_new_ptr, contents_of_previous_write, new_entry->size + count);
+            kfree(contents_of_previous_write);
             new_entry_string = temp_new_ptr;
         }        
         else
         {
-            if (!new_entry_string)
-            {
-                printk(KERN_WARNING "Can't reallocate memory for string to write: %lu bytes\n", count);
-                mutex_unlock(&(((struct aesd_dev *)(filp->private_data))->lock));
-                return retval;
-            }        
+            printk(KERN_WARNING "Can't reallocate memory for string to write: %lu bytes\n", count);
+            mutex_unlock(&(((struct aesd_dev *)(filp->private_data))->lock));
+            return retval;
         }
     }
 
     retval = copy_from_user(local_buf, buf, count);
-    if (!retval)
+    if (retval)
     {
         printk(KERN_WARNING "Could not copy all user data passed to write(): %lu bytes not written\n", retval);
     }
     strncat(new_entry_string, local_buf, count);
-    kfree(new_entry_string);
+    kfree(local_buf);
     new_entry->buffptr = new_entry_string;
     new_entry->size = count;
     for (i = 0; i < count; i++)
