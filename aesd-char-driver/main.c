@@ -126,13 +126,13 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         {
             printk(KERN_WARNING "Can't allocate memory for string to write: %lu bytes\n", count);
             mutex_unlock(&(((struct aesd_dev *)(filp->private_data))->lock));
-            return retval;
+            return -ENOMEM;
         }        
     }
     else 
     {
-        contents_of_previous_write = new_entry->buffptr;
-        // Handle the case where we got an incomplete entry (lacking newline) on a previous call    
+        // Handle the case where we got an incomplete entry (lacking newline) on a previous call 
+        contents_of_previous_write = new_entry->buffptr;   
         temp_new_ptr = (char *)(kzalloc(new_entry->size + (count * sizeof(char)), GFP_KERNEL));
         if (temp_new_ptr)
         {
@@ -144,7 +144,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         {
             printk(KERN_WARNING "Can't reallocate memory for string to write: %lu bytes\n", count);
             mutex_unlock(&(((struct aesd_dev *)(filp->private_data))->lock));
-            return retval;
+            return -ENOMEM;
         }
     }
 
@@ -157,8 +157,10 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     strncat(new_entry_string, local_buf, count);
     kfree(local_buf);
     new_entry->buffptr = new_entry_string;
-    new_entry->size = count;
-    for (i = 0; i < count; i++)
+    PDEBUG("Working entry size was %zu;",new_entry->size); 
+    new_entry->size += count;
+    PDEBUG("now %zu\n",new_entry->size);
+    for (i = 0; i < new_entry->size; i++)
     {
         if (new_entry->buffptr[i] == '\n')
         {
@@ -181,6 +183,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     }
     else
     {
+        PDEBUG("String to write did not have newline; wrote %zu bytes\n", count);  
         mutex_unlock(&(((struct aesd_dev *)(filp->private_data))->lock));
         return count;
     }
