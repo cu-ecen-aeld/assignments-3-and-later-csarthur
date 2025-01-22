@@ -81,8 +81,7 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
         // If buffer wasn't full prior to this add, but now it is, set flag
         // Next write will overwrite
         if (buffer->in_offs == buffer->out_offs)
-        {
-            //printf("Buffer is now full!!!!!!\r\n");
+        {            
             buffer->full = true;
         }        
     }
