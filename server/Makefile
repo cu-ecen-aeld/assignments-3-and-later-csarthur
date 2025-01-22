@@ -1,5 +1,6 @@
 CC ?= $(CROSS_COMPILE)gcc
-CFLAGS ?= -g -Wall -Werror
+USE_AESD_CHAR_DEVICE ?= 1
+CFLAGS ?= -g -Wall -Werror -DUSE_AESD_CHAR_DEVICE=$(USE_AESD_CHAR_DEVICE)
 LDFLAGS ?= -lpthread -lrt
 TARGET_AESDSOCKET := aesdsocket
 OBJS := $(TARGET_AESDSOCKET).o

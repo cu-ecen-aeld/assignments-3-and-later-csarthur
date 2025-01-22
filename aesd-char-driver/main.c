@@ -110,7 +110,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
     
-    mutex_lock(&(((struct aesd_dev *)(filp->private_data))->lock));
+    mutex_lock_interruptible(&(((struct aesd_dev *)(filp->private_data))->lock));
     
     local_buf = (char *)kzalloc(count * sizeof(char), GFP_KERNEL);
 
@@ -120,6 +120,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         if (!new_entry_string)
         {
             printk(KERN_WARNING "Can't allocate memory for string to write: %lu bytes\n", count);
+            mutex_unlock(&(((struct aesd_dev *)(filp->private_data))->lock));
             return retval;
         }        
     }
@@ -138,6 +139,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
             if (!new_entry_string)
             {
                 printk(KERN_WARNING "Can't reallocate memory for string to write: %lu bytes\n", count);
+                mutex_unlock(&(((struct aesd_dev *)(filp->private_data))->lock));
                 return retval;
             }        
         }

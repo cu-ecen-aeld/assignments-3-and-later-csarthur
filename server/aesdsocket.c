@@ -18,7 +18,7 @@
 #define IP_ADDRESS_LENGTH 40
 #define MAX_PACKET_SIZE 1500
 
-#ifdef USE_AESD_CHAR_DEVICE
+#if (USE_AESD_CHAR_DEVICE == 1)
     #define OUTPUT_FILENAME "/dev/aesdchar"
 #else
     #define OUTPUT_FILENAME "/var/tmp/aesdsocketdata"
@@ -64,7 +64,9 @@ int main(int argc, char ** argv)
     }        
         
     int run_as_daemon = 0;   
+#if (USE_AESD_CHAR_DEVICE == 0)    
     bool timer_started = false; 
+#endif    
     pthread_attr_t thread_attr;
     struct node_t * head = NULL;
     struct sigaction aesdsocket_sigaction;
@@ -202,7 +204,7 @@ int main(int argc, char ** argv)
             retval = -1;
             goto cleanup;        
         }
-#ifndef USE_AESD_CHAR_DEVICE            
+#if (USE_AESD_CHAR_DEVICE == 0)
         if (!timer_started)
         {
             if (!start_timer(&mutex))
@@ -283,7 +285,7 @@ cleanup:
             perror("aesdsocket: Could not close file descriptor for socket");
         }
     }
-#ifndef USE_AESD_CHAR_DEVICE
+#if (USE_AESD_CHAR_DEVICE == 0)
     if (!access(OUTPUT_FILENAME, F_OK)) // if file exists
     {
         if (remove(OUTPUT_FILENAME))
