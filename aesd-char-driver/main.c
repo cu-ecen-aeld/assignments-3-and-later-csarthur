@@ -176,9 +176,10 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
             kfree(circ_buffer->entry[circ_buffer->in_offs].buffptr);
         }
         aesd_circular_buffer_add_entry(circ_buffer, new_entry);
+        *f_pos += new_entry->size;
         new_entry->size = 0;
         new_entry->buffptr = NULL;
-        mutex_unlock(&(((struct aesd_dev *)(filp->private_data))->lock));
+        mutex_unlock(&(((struct aesd_dev *)(filp->private_data))->lock));            
         return count;
     }
     else
@@ -188,12 +189,34 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         return count;
     }
 }
+
+loff_t aesd_llseek(struct file * filp, loff_t off, int whence)
+{
+    struct aesd_dev * dev = filp->private_data;
+    struct aesd_circular_buffer * circ_buffer = dev->circ_buffer;    
+    loff_t size = 0;    
+    int i = 0;
+    PDEBUG("llseek %llu, whence %d\n", off, whence);
+    if (mutex_lock_interruptible(&(((struct aesd_dev *)(filp->private_data))->lock)))
+    {
+        printk(KERN_WARNING "Interrupted waiting on mutex lock");
+        return -EINTR;
+    }    
+    for (i = 0; i < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++)
+    {
+        size += circ_buffer->entry[i].size;
+    }
+    mutex_unlock(&(((struct aesd_dev *)(filp->private_data))->lock));
+	return fixed_size_llseek(filp, off, whence, size);
+}
+
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
     .write =    aesd_write,
     .open =     aesd_open,
     .release =  aesd_release,
+    .llseek =   aesd_llseek,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
@@ -209,8 +232,6 @@ static int aesd_setup_cdev(struct aesd_dev *dev)
     }
     return err;
 }
-
-
 
 int aesd_init_module(void)
 {
