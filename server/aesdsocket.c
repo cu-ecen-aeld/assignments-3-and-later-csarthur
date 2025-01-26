@@ -365,8 +365,9 @@ void * socket_thread(void * thread_data)
                     return thread_data;
                 }
                 pthread_mutex_lock(data->mutex_ptr);
-#if (USE_AESD_CHAR_DEVICE == 1)                
-                if (!strncmp(packet_buf, IOCTL_CMD_STRING, sizeof(IOCTL_CMD_STRING) - 1))
+#if (USE_AESD_CHAR_DEVICE == 1)
+                int strncmp_retval = strncmp(packet_buf, IOCTL_CMD_STRING, strlen(IOCTL_CMD_STRING));
+                if (!strncmp_retval)
                 {
                     if (strtok(packet_buf,":,"))
                     {
@@ -386,6 +387,7 @@ void * socket_thread(void * thread_data)
                 }
                 else
                 {
+                    syslog(LOG_INFO, "Packet buf = %s, strncmp = %d", packet_buf, strncmp_retval);
                     write_rc = write(output_file_desc, packet_buf, total_bytes_received);
                 }
 #else
