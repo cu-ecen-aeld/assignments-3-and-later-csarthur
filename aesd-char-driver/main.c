@@ -21,6 +21,8 @@
 #include <linux/string.h>
 #include <linux/slab.h>
 #include "aesdchar.h"
+#include "aesd_ioctl.h"
+
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
@@ -41,9 +43,6 @@ int aesd_open(struct inode *inode, struct file *filp)
 int aesd_release(struct inode *inode, struct file *filp)
 {
     PDEBUG("release");
-    /**
-     * TODO: handle release
-     */
     return 0;
 }
 
@@ -200,7 +199,7 @@ loff_t aesd_llseek(struct file * filp, loff_t off, int whence)
     if (mutex_lock_interruptible(&(((struct aesd_dev *)(filp->private_data))->lock)))
     {
         printk(KERN_WARNING "Interrupted waiting on mutex lock");
-        return -EINTR;
+        return -ERESTARTSYS;
     }    
     for (i = 0; i < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++)
     {
@@ -210,6 +209,65 @@ loff_t aesd_llseek(struct file * filp, loff_t off, int whence)
 	return fixed_size_llseek(filp, off, whence, size);
 }
 
+static long aesd_adjust_file_offset(struct file * filp, unsigned int write_cmd, unsigned int write_cmd_offset)
+{
+    struct aesd_dev * dev = filp->private_data;
+    struct aesd_circular_buffer * circ_buffer = dev->circ_buffer; 
+    int i;
+    int length_of_writes;
+    if (mutex_lock_interruptible(&dev->lock))
+    {
+        printk(KERN_WARNING "aesd_adjust_file_offset: Interrupted waiting on mutex lock");
+        return -ERESTARTSYS;
+    }
+    if (write_cmd >= 10)
+    {
+        mutex_unlock(&dev->lock);
+        printk(KERN_WARNING "aesd_adjust_file_offset: write_cmd value too large");        
+        return -EINVAL;
+    }    
+    if (circ_buffer->entry[write_cmd].size == 0 || circ_buffer->entry[write_cmd].size < write_cmd_offset)
+    {
+        mutex_unlock(&dev->lock);
+        printk(KERN_WARNING "aesd_adjust_file_offset: write_cmd not written or offset too large");                
+        return -EINVAL;
+    }  
+    PDEBUG("aesd_adjust_file_offset cmd %u, offset %u\n", write_cmd, write_cmd_offset);
+    if (write_cmd < circ_buffer->out_offs)
+    {
+        write_cmd += AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    }
+    for (i = write_cmd; i >= circ_buffer->out_offs; i--)
+    {        
+        int cmd_len = circ_buffer->entry[i % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].size;
+        length_of_writes += cmd_len;
+        PDEBUG("aesd_adjust_file_offset: inspect cmd %u, add length %d, total %d\n", (i % 10), cmd_len, length_of_writes);
+    }    
+    filp->f_pos = length_of_writes + write_cmd_offset;
+    mutex_unlock(&dev->lock);
+    return 0;
+}
+
+long int aesd_ioctl(struct file * filp, unsigned int cmd, unsigned long arg)
+{    
+    switch(cmd)
+    {        
+        case AESDCHAR_IOCSEEKTO:
+            struct aesd_seekto seekto;
+            if (copy_from_user(&seekto, (const void __user *) arg, sizeof(seekto)) != 0)
+            {
+                return -EFAULT;
+            }
+            else
+            {
+                return aesd_adjust_file_offset(filp, seekto.write_cmd, seekto.write_cmd_offset);
+            }
+            break;
+        default:
+            return -EINVAL;
+    }
+}
+
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
@@ -217,6 +275,7 @@ struct file_operations aesd_fops = {
     .open =     aesd_open,
     .release =  aesd_release,
     .llseek =   aesd_llseek,
+    .unlocked_ioctl =    aesd_ioctl,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
@@ -273,6 +332,8 @@ int aesd_init_module(void)
 
 void aesd_cleanup_module(void)
 {
+    int i;
+    struct aesd_buffer_entry * entry;
     dev_t devno = MKDEV(aesd_major, aesd_minor);
 
     cdev_del(&aesd_device.cdev);
@@ -281,6 +342,13 @@ void aesd_cleanup_module(void)
     
     if(aesd_device.circ_buffer)
     {
+        AESD_CIRCULAR_BUFFER_FOREACH(entry, aesd_device.circ_buffer, i)
+        {
+            if (entry->buffptr)
+            {
+                kfree(entry->buffptr);        
+            }
+        }
         kfree(aesd_device.circ_buffer);
     }
     if(aesd_device.working_entry)
@@ -289,8 +357,6 @@ void aesd_cleanup_module(void)
     }
     unregister_chrdev_region(devno, 1);
 }
-
-
 
 module_init(aesd_init_module);
 module_exit(aesd_cleanup_module);
