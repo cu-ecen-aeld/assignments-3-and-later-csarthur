@@ -366,7 +366,7 @@ void * socket_thread(void * thread_data)
                 }
                 pthread_mutex_lock(data->mutex_ptr);
 #if (USE_AESD_CHAR_DEVICE == 1)                
-                if (!strncmp(packet_buf, IOCTL_CMD_STRING, sizeof(IOCTL_CMD_STRING)))
+                if (!strncmp(packet_buf, IOCTL_CMD_STRING, sizeof(IOCTL_CMD_STRING) - 1))
                 {
                     if (strtok(packet_buf,":,"))
                     {
