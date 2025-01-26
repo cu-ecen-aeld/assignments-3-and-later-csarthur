@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netdb.h>
@@ -14,9 +15,11 @@
 #include <pthread.h>
 #include <time.h>
 #include <errno.h>
+#include "../aesd-char-driver/aesd_ioctl.h"
 
 #define IP_ADDRESS_LENGTH 40
 #define MAX_PACKET_SIZE 1500
+#define IOCTL_CMD_STRING "AESDCHAR_IOCSEEKTO"
 
 #if (USE_AESD_CHAR_DEVICE == 1)
     #define OUTPUT_FILENAME "/dev/aesdchar"
@@ -346,6 +349,7 @@ void * socket_thread(void * thread_data)
         }
         else
         {                   
+            int write_rc = -1;
             total_bytes_received += num_bytes_received;                
             if (*(packet_buf + total_bytes_received - 1) == '\n')
             {
@@ -361,10 +365,35 @@ void * socket_thread(void * thread_data)
                     return thread_data;
                 }
                 pthread_mutex_lock(data->mutex_ptr);
-                int write_rc = write(output_file_desc, packet_buf, total_bytes_received);
+#if (USE_AESD_CHAR_DEVICE == 1)                
+                if (!strncmp(packet_buf, IOCTL_CMD_STRING, sizeof(IOCTL_CMD_STRING)))
+                {
+                    if (strtok(packet_buf,":,"))
+                    {
+                        struct aesd_seekto seekto;
+                        char * temp = strtok(NULL,":,");
+                        if (temp)
+                        {
+                            seekto.write_cmd = atoi(temp);                            
+                        }
+                        temp = strtok(NULL,":,");
+                        if (temp)
+                        {
+                            seekto.write_cmd_offset = atoi(temp);
+                        }
+                        write_rc = ioctl(output_file_desc, AESDCHAR_IOCSEEKTO, &seekto);
+                    }            
+                }
+                else
+                {
+                    write_rc = write(output_file_desc, packet_buf, total_bytes_received);
+                }
+#else
+                write_rc = write(output_file_desc, packet_buf, total_bytes_received);
+#endif                
                 pthread_mutex_unlock(data->mutex_ptr);
                 free(packet_buf);
-                if (write_rc == -1)
+                if (write_rc < 0)
                 {
                     perror("aesdsocket: Write to output file failed");
                     data->thread_return_val = -1;
@@ -377,12 +406,15 @@ void * socket_thread(void * thread_data)
                 total_bytes_received = 0;
 
                 // Return contents of output file
+#if (USE_AESD_CHAR_DEVICE == 0)                               
                 lseek(output_file_desc, 0, SEEK_SET);
+#endif                
                 size_t num_bytes_read;
                 char * read_buffer = malloc(MAX_PACKET_SIZE * sizeof(char));
                 if (!read_buffer)
                 {
                     perror("aesdsocket: Could not allocate file read buffer");
+                    close(output_file_desc);
                     data->thread_return_val = -1;                    
                     data->thread_done = 1;                    
                     return thread_data;
