@@ -408,9 +408,7 @@ void * socket_thread(void * thread_data)
                 total_bytes_received = 0;
 
                 // Return contents of output file
-#if (USE_AESD_CHAR_DEVICE == 0)                               
                 lseek(output_file_desc, 0, SEEK_SET);
-#endif                
                 size_t num_bytes_read;
                 char * read_buffer = malloc(MAX_PACKET_SIZE * sizeof(char));
                 if (!read_buffer)
