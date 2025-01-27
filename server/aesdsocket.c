@@ -353,6 +353,7 @@ void * socket_thread(void * thread_data)
             total_bytes_received += num_bytes_received;                
             if (*(packet_buf + total_bytes_received - 1) == '\n')
             {
+                int dont_seek = 0;
                 int output_file_desc = open(OUTPUT_FILENAME,
                                         O_CREAT | O_RDWR | O_APPEND,
                                         S_IRGRP | S_IRUSR | S_IROTH | S_IWGRP | S_IWUSR | S_IWOTH);
@@ -383,11 +384,11 @@ void * socket_thread(void * thread_data)
                             seekto.write_cmd_offset = atoi(temp);
                         }
                         write_rc = ioctl(output_file_desc, AESDCHAR_IOCSEEKTO, &seekto);
+                        dont_seek = 1;
                     }            
                 }
                 else
-                {
-                    syslog(LOG_INFO, "Packet buf = %s, strncmp = %d", packet_buf, strncmp_retval);
+                {                    
                     write_rc = write(output_file_desc, packet_buf, total_bytes_received);
                 }
 #else
@@ -408,7 +409,10 @@ void * socket_thread(void * thread_data)
                 total_bytes_received = 0;
 
                 // Return contents of output file
-                lseek(output_file_desc, 0, SEEK_SET);
+                if (!dont_seek)
+                {
+                    lseek(output_file_desc, 0, SEEK_SET);
+                }
                 size_t num_bytes_read;
                 char * read_buffer = malloc(MAX_PACKET_SIZE * sizeof(char));
                 if (!read_buffer)
