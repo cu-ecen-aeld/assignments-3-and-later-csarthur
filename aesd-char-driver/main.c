@@ -237,7 +237,7 @@ static long aesd_adjust_file_offset(struct file * filp, unsigned int write_cmd, 
     {
         write_cmd += AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
     }
-    for (i = write_cmd; i >= circ_buffer->out_offs; i--)
+    for (i = write_cmd; i > circ_buffer->out_offs; i--)
     {        
         int cmd_len = circ_buffer->entry[i % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].size;
         length_of_writes += cmd_len;
